@@ -5,7 +5,7 @@ from scipy.sparse import csr_matrix
 
 class SpectralCF(object):
     def __init__(self, K, graph, n_users, n_items, emb_dim, lr, batch_size, decay,DIR):
-        self.model_name = 'GraphCF with eigen decomposition'
+        self.model_name = 'SpectralCF'
         self.graph = graph
         self.n_users = n_users
         self.n_items = n_items
@@ -20,12 +20,6 @@ class SpectralCF(object):
 
         self.lamda, self.U = np.linalg.eig(self.L)
         self.lamda = np.diag(self.lamda)
-        np.save(DIR+'U',self.U)
-        np.save(DIR+'lamda', self.lamda)
-        self.U = np.load(DIR+'U.npy')
-        self.lamda = np.load(DIR+'lamda.npy')
-
-
 
         # placeholder definition
         self.users = tf.placeholder(tf.int32, shape=(self.batch_size,))
