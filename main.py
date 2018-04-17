@@ -6,7 +6,7 @@ from SpectralCF import *
 from load_data import *
 
 
-MODEL = 'SpectralCF'
+MODEL = 'GraphCF'
 DATASET = 'ml-1m'
 
 EMB_DIM = 16
@@ -25,7 +25,6 @@ DIR = 'data/'+DATASET+'/'
 
 data_generator = Data(train_file=DIR+'train_users.dat', test_file=DIR+'test_users.dat', batch_size=BATCH_SIZE)
 USER_NUM, ITEM_NUM = data_generator.get_num_users_items()
-
 
 
 def simple_test_one_user(x):
@@ -55,6 +54,7 @@ def simple_test_one_user(x):
             r.append(1)
         else:
             r.append(0)
+
 
 
 
@@ -109,7 +109,8 @@ def simple_test(sess, model, users_to_test):
 
 def main():
 
-    model = GraphCF(K=K, graph=data_generator.R, n_users=USER_NUM, n_items=ITEM_NUM, emb_dim=EMB_DIM,
+
+    model = SpectralCF(K=K, graph=data_generator.R, n_users=USER_NUM, n_items=ITEM_NUM, emb_dim=EMB_DIM,
                      lr=LR, decay=DECAY, batch_size=BATCH_SIZE,DIR=DIR)
     print(model.model_name)
 
