@@ -6,7 +6,7 @@ from SpectralCF import *
 from load_data import *
 
 
-MODEL = 'GraphCF'
+MODEL = 'SpectralCF'
 DATASET = 'ml-1m'
 
 EMB_DIM = 16
