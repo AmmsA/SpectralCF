@@ -1,120 +1,143 @@
-import tensorflow as tf
-import utils as ut
-import numpy as np
-from scipy.sparse import csr_matrix
+import random
+import multiprocessing
+cores = multiprocessing.cpu_count()
+from SpectralCF import *
 
-class GraphCF(object):
-    def __init__(self, K, graph, n_users, n_items, emb_dim, lr, batch_size, decay,DIR):
-        self.model_name = 'GraphCF with eigen decomposition'
-        self.graph = graph
-        self.n_users = n_users
-        self.n_items = n_items
-        self.emb_dim = emb_dim
-        self.batch_size = batch_size
-        self.K = K
-        self.decay = decay
+from load_data import *
 
-        self.A = self.adjacient_matrix(self_connection=True)
-        self.D = self.degree_matrix()
-        self.L = self.laplacian_matrix(normalized=True)
 
-        self.lamda, self.U = np.linalg.eig(self.L)
-        self.lamda = np.diag(self.lamda)
-        np.save(DIR+'U',self.U)
-        np.save(DIR+'lamda', self.lamda)
-        self.U = np.load(DIR+'U.npy')
-        self.lamda = np.load(DIR+'lamda.npy')
+MODEL = 'GraphCF'
+DATASET = 'ml-1m'
+
+EMB_DIM = 16
+BATCH_SIZE = 1024
+DECAY = 0.001
+LAMDA = 1
+K = 3
+N_EPOCH = 200
+LR = 0.001
+DROPOUT = 0.0
+#NEGATIVE_SIZE = 3
+
+DIR = 'data/'+DATASET+'/'
 
 
 
-        # placeholder definition
-        self.users = tf.placeholder(tf.int32, shape=(self.batch_size,))
-        self.pos_items = tf.placeholder(tf.int32, shape=(self.batch_size, ))
-        self.neg_items = tf.placeholder(tf.int32, shape=(self.batch_size,))
+data_generator = Data(train_file=DIR+'train_users.dat', test_file=DIR+'test_users.dat', batch_size=BATCH_SIZE)
+USER_NUM, ITEM_NUM = data_generator.get_num_users_items()
 
 
-        self.user_embeddings = tf.Variable(
-            tf.random_normal([self.n_users, self.emb_dim], mean=0.01, stddev=0.02, dtype=tf.float32),
-            name='user_embeddings')
-        self.item_embeddings = tf.Variable(
-            tf.random_normal([self.n_items, self.emb_dim], mean=0.01, stddev=0.02, dtype=tf.float32),
-            name='item_embeddings')
+def simple_test_one_user(x):
+    # user u's ratings for user u
+    rating = x[0]
+    #uid
+    u = x[1]
+    #user u's items in the training set
+    training_items = data_generator.train_items[u]
+    #user u's items in the test set
+    user_pos_test = data_generator.test_set[u]
 
-        self.filters = []
-        for k in range(self.K):
-            self.filters.append(
-                tf.Variable(
-                    tf.random_normal([self.emb_dim, self.emb_dim], mean=0.01, stddev=0.02, dtype=tf.float32))
+    all_items = set(range(ITEM_NUM))
 
-            )
+    test_items = list(all_items - set(training_items))
+    item_score = []
+    for i in test_items:
+        item_score.append((i, rating[i]))
 
+    item_score = sorted(item_score, key=lambda x: x[1])
+    item_score.reverse()
+    item_sort = [x[0] for x in item_score]
 
-        A_hat = np.dot(self.U, self.U.T) + np.dot(np.dot(self.U, self.lamda), self.U.T)
-        #A_hat += np.dot(np.dot(self.U, self.lamda_2), self.U.T)
-        A_hat = A_hat.astype(np.float32)
-
-        embeddings = tf.concat([self.user_embeddings, self.item_embeddings], axis=0)
-        all_embeddings = [embeddings]
-        for k in range(0, self.K):
-
-            embeddings = tf.matmul(A_hat, embeddings)
-
-            #filters = self.filters[k]#tf.squeeze(tf.gather(self.filters, k))
-            embeddings = tf.nn.sigmoid(tf.matmul(embeddings, self.filters[k]))
-            all_embeddings += [embeddings]
-        all_embeddings = tf.concat(all_embeddings, 1)
-        self.u_embeddings, self.i_embeddings = tf.split(all_embeddings, [self.n_users, self.n_items], 0)
-
-        self.u_embeddings = tf.nn.embedding_lookup(self.u_embeddings, self.users)
-        self.pos_i_embeddings = tf.nn.embedding_lookup(self.i_embeddings, self.pos_items)
-        self.neg_i_embeddings = tf.nn.embedding_lookup(self.i_embeddings, self.neg_items)
-
-        self.all_ratings = tf.matmul(self.u_embeddings, self.i_embeddings, transpose_a=False, transpose_b=True)
-
-
-        self.loss = self.create_bpr_loss(self.u_embeddings, self.pos_i_embeddings, self.neg_i_embeddings)
-
-
-        self.opt = tf.train.RMSPropOptimizer(learning_rate=lr)
-
-        self.updates = self.opt.minimize(self.loss, var_list=[self.user_embeddings, self.item_embeddings] + self.filters)
-
-    def create_bpr_loss(self, users, pos_items, neg_items):
-        pos_scores = tf.reduce_sum(tf.multiply(users, pos_items), axis=1)
-        neg_scores = tf.reduce_sum(tf.multiply(users, neg_items), axis=1)
-
-        regularizer = tf.nn.l2_loss(users) + tf.nn.l2_loss(pos_items) + tf.nn.l2_loss(neg_items)
-        regularizer = regularizer/self.batch_size
-
-        maxi = tf.log(tf.nn.sigmoid(pos_scores - neg_scores))
-        loss = tf.negative(tf.reduce_mean(maxi)) + self.decay * regularizer
-        return loss
-
-
-    def adjacient_matrix(self, self_connection=False):
-        A = np.zeros([self.n_users+self.n_items, self.n_users+self.n_items], dtype=np.float32)
-        A[:self.n_users, self.n_users:] = self.graph
-        A[self.n_users:, :self.n_users] = self.graph.T
-        if self_connection == True:
-            return np.identity(self.n_users+self.n_items,dtype=np.float32) + A
-        return A
-
-    def degree_matrix(self):
-        degree = np.sum(self.A, axis=1, keepdims=False)
-        #degree = np.diag(degree)
-        return degree
-
-
-    def laplacian_matrix(self, normalized=False):
-        if normalized == False:
-            return self.D - self.A
-
-        temp = np.dot(np.diag(np.power(self.D, -1)), self.A)
-        #temp = np.dot(temp, np.power(self.D, -0.5))
-        return np.identity(self.n_users+self.n_items,dtype=np.float32) - temp
+    r = []
+    for i in item_sort:
+        if i in user_pos_test:
+            r.append(1)
+        else:
+            r.append(0)
 
 
 
 
+    recall_20 = ut.recall_at_k(r, 20, len(user_pos_test))
+    recall_40 = ut.recall_at_k(r, 40, len(user_pos_test))
+    recall_60 = ut.recall_at_k(r, 60, len(user_pos_test))
+    recall_80 = ut.recall_at_k(r, 80, len(user_pos_test))
+    recall_100 = ut.recall_at_k(r, 100, len(user_pos_test))
+
+    ap_20 = ut.average_precision(r,20)
+    ap_40 = ut.average_precision(r, 40)
+    ap_60 = ut.average_precision(r, 60)
+    ap_80 = ut.average_precision(r, 80)
+    ap_100 = ut.average_precision(r, 100)
 
 
+    return np.array([recall_20,recall_40,recall_60,recall_80,recall_100, ap_20,ap_40,ap_60,ap_80,ap_100])
+
+
+def simple_test(sess, model, users_to_test):
+    result = np.array([0.] * 10)
+    pool = multiprocessing.Pool(cores)
+    batch_size = BATCH_SIZE
+    #all users needed to test
+    test_users = users_to_test
+    test_user_num = len(test_users)
+    index = 0
+    while True:
+        if index >= test_user_num:
+            break
+        user_batch = test_users[index:index + batch_size]
+        index += batch_size
+        FLAG = False
+        if len(user_batch) < batch_size:
+            user_batch += [user_batch[-1]] * (batch_size - len(user_batch))
+            user_batch_len = len(user_batch)
+            FLAG = True
+        user_batch_rating = sess.run(model.all_ratings, {model.users: user_batch})
+        user_batch_rating_uid = zip(user_batch_rating, user_batch)
+        batch_result = pool.map(simple_test_one_user, user_batch_rating_uid)
+
+        if FLAG == True:
+            batch_result = batch_result[:user_batch_len]
+        for re in batch_result:
+            result += re
+
+    pool.close()
+    ret = result / test_user_num
+    ret = list(ret)
+    return ret
+
+
+def main():
+
+
+    model = SpectralCF(K=K, graph=data_generator.R, n_users=USER_NUM, n_items=ITEM_NUM, emb_dim=EMB_DIM,
+                     lr=LR, decay=DECAY, batch_size=BATCH_SIZE,DIR=DIR)
+    print(model.model_name)
+
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    sess = tf.Session(config=config)
+    sess.run(tf.global_variables_initializer())
+
+    best = None
+    for epoch in range(N_EPOCH):
+        users, pos_items, neg_items = data_generator.sample()
+        _, loss = sess.run([model.updates, model.loss],
+                                           feed_dict={model.users: users, model.pos_items: pos_items,
+                                                      model.neg_items: neg_items})
+
+        users_to_test = list(data_generator.test_set.keys())
+
+        ret = simple_test(sess, model, users_to_test)
+
+
+
+        print('Epoch %d training loss %f' % (epoch, loss))
+        print('recall_20 %f recall_40 %f recall_60 %f recall_80 %f recall_100 %f'
+              % (ret[0],ret[1],ret[2],ret[3],ret[4]))
+        print('map_20 %f map_40 %f map_60 %f map_80 %f map_100 %f'
+              % (ret[5], ret[6], ret[7], ret[8], ret[9]))
+
+
+if __name__ == '__main__':
+    main()
