@@ -1,5 +1,4 @@
 # SpectralCF
-#### This repository hosts the code of SpectralCF
 #### Requirements:
 ##### Python 3.5
 ##### TensorFlow 1.4.0-rc0
