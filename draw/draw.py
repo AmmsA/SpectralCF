@@ -16,9 +16,6 @@ def plot(x, y, n_users, n_items,filename):
     fig, ax = plt.subplots()
     ax.scatter(x, y,c=c,s=400)
 
-    #fig = plt.figure()
-    #ax = Axes3D(fig)
-    #ax.scatter(x,y,z)
 
     for i, txt in enumerate(n):
         fc = 'red' if i==0 else 'green'
@@ -36,18 +33,10 @@ def plot(x, y, n_users, n_items,filename):
 
 
 num = 10
-n_users, n_items = 4, 4
-R = [[1,0,0,0],[1,1,0,0],[1,0,1,0],[0,1,1,1]]
-R = np.array(R, dtype=np.float32)#np.zeros([1,n_items],dtype=np.float32)
+n_users, n_items = 3, 4
+R = [[1,0,0,0],[1,1,0,1],[1,0,1,1]]
+R = np.array(R, dtype=np.float32)
 
-#R[0,0] = 1.0
-#roll = np.zeros([1,n_items],dtype=np.float32)
-#roll[0,0], roll[0,1] = 1.0, 1.0
-#for _ in range(num-1):
-#    R = np.vstack([R,roll])
-#    roll = np.roll(roll,1)
-#print(R)
-#R = np.array([[1,0,0],[1,1,0],[0,1,1]],dtype=np.float32)
 A = np.zeros([n_users+n_items, n_users+n_items], dtype=np.float32)
 A[:n_users, n_users:] = R
 A[n_users:, :n_users] = R.T
@@ -55,18 +44,11 @@ D_inverse = np.diag(1.0/np.sum(A,axis=0))
 D_inverse_half = np.diag(1.0/np.sqrt(np.sum(A,axis=0)))
 
 D = np.diag(np.sum(A,axis=0))
-L = np.identity(n_users+n_items) - np.dot(D_inverse, A)#np.dot(np.dot(D_inverse_half, A),D_inverse_half)
+L = np.identity(n_users+n_items) - np.dot(D_inverse, A)
 lamda, U = np.linalg.eig(L)
 index = [i[0] for i in sorted(enumerate(lamda),key=lambda i: i[1])]
 lamda = lamda[index]
 print(lamda)
 U = U[:,index]
-#plt.plot(U[1], U[2], 'ro')
-#plt.axis([-1, 1, -1, 1])
-#plt.show()
-plot(U[:,1],U[:,2],n_users, n_items,'low.eps')
-plot(U[:,-5],U[:,-4],n_users, n_items,'high.eps')
-#for i in range(n_users+n_items-1):
-#    plot(U[:,i],U[:,i+1],n_users, n_items)
 
-
+plot(U[:,1],U[:,2],n_users, n_items,'fig.eps')
