@@ -5,9 +5,6 @@ import random as rd
 class Data(object):
     def __init__(self, train_file, test_file, batch_size):
         self.batch_size = batch_size
-
-
-
         #get number of users and items
         self.n_users, self.n_items = 0, 0
 
@@ -76,8 +73,3 @@ class Data(object):
 
     def get_num_users_items(self):
         return self.n_users, self.n_items
-
-
-
-
-
